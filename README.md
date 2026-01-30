@@ -203,7 +203,6 @@ dim3 grid((n+block-1)/block/thread_per_num);
 gpu_sigmoidV2<thread_per_num><<<grid,block>>>(d_a,d_b,n);
 
 template <int thread_per_num>
-template <int thread_per_num>
 __global__ void gpu_sigmoidV2(float *a,float *b,int n){
     int tx=(threadIdx.x+blockDim.x*blockIdx.x)*thread_per_num;
     if(tx<n){
