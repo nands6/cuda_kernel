@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include <sys/time.h>
+#include <cstdio>
 
 void cpu_softmax(float *out, const float *inp, int N, int C) {
     for (int i = 0; i < N; i++) {
@@ -226,6 +227,7 @@ int main(){
           inp[n * C + c] = float(c+1);
         }
     }
+    
 
     int grid_size=N;
     const int block_size=64;
@@ -238,7 +240,7 @@ int main(){
     cudaMemcpy(device_inp,inp,inByteCount,cudaMemcpyHostToDevice);
     cpu_softmax(cpu_result,inp,N,C);
     // print_result(cpu_result,N,C);
-
+    
 
     struct timeval t1, t2;
     double time_cuda_pre = 0;
@@ -261,6 +263,10 @@ int main(){
     }else{
         printf("错误\n");
     }
-
+    free(inp);
+    free(cpu_result);
+    free(gpu_result);
+    cudaFree(device_inp);
+    cudaFree(device_out);
     return 0;
 }

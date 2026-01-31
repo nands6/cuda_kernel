@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cuda_runtime.h>
-
+#include <cstdio>
 
 
 void cpu_sigmoid(float *a,float *b,int n){
@@ -118,6 +118,12 @@ int main(){
         printf("错误\n");
        
     }
+
+    cudaFree(d_a);
+    cudaFree(d_b);
+    free(h_a);
+    free(h_b);
+    free(gpu_result);
 
     return 0;
 }

@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include <sys/time.h>
+#include <cstdio>
 
 bool check(float *a,float* b,int m,int n){
     for(int i=0;i<m;i++){
@@ -113,7 +114,11 @@ int main(){
         printf("错误\n");
     }
 
-    
+    free(a);
+    free(cpu_result);
+    free(gpu_result);
+    cudaFree(device_a);
+    cudaFree(device_b);
 
 
 }

@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include <sys/time.h>
+#include <cstdio>
 
 void print_result(float *a,int n){
     for(int i=0;i<n;i++){
@@ -157,6 +158,12 @@ int main(){
         printf("错误\n");
     }
     
-
+    free(a);
+    free(b);
+    free(cpu_result);
+    free(gpu_result);
+    cudaFree(device_a);
+    cudaFree(device_b);
+    cudaFree(device_c);
     return 0;
 }

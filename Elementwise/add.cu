@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <sys/time.h>
-
+#include <cstdio>
 
 void cpu_add(float *a,float *b,float *c,int n){
     for(int i=0;i<n;i++){
@@ -113,6 +113,19 @@ int main(){
         printf("错误\n");
        
     }
+
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    
+   
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    free(h_a);
+    free(h_b);
+    free(h_c);
+    free(gpu_result);
 
     return 0;
 }
