@@ -77,6 +77,8 @@ __global__ void gpu_softmaxV1(float *inp,float *out,int N,int C){
 
 }
 
+
+
 //一个线程处理多个元素
 template<int BLOCK>
 __global__ void gpu_softmaxV2(float *inp,float *out,int N,int C){
@@ -122,6 +124,10 @@ __global__ void gpu_softmaxV2(float *inp,float *out,int N,int C){
         begin_out[i]=begin_out[i]/sum;
     }    
 }
+
+
+
+
 
 //wrap shuffle版本
 __device__ float wrapreduceMax(float val){
@@ -214,6 +220,7 @@ __global__ void gpu_softmaxV3(float *inp,float *out,int N,int C){
 
 
 
+
 int main(){
 
     int N = 20;
@@ -227,10 +234,14 @@ int main(){
           inp[n * C + c] = float(c+1);
         }
     }
-    
+    //V1版本
+    // int grid_size=N;
+    // const int block_size=1;
 
     int grid_size=N;
     const int block_size=64;
+
+    
    
     float *device_inp,*device_out;
     cudaMalloc((float**)&device_inp,inByteCount);
@@ -248,7 +259,7 @@ int main(){
     gettimeofday(&t1, NULL);
 
     //gpu_softmaxV1<<<grid_size,block_size>>>(device_inp,device_out,N,C);
-    // gpu_softmaxV2<block_size><<<grid_size,block_size>>>(device_inp,device_out,N,C);
+    //gpu_softmaxV2<block_size><<<grid_size,block_size>>>(device_inp,device_out,N,C);
     gpu_softmaxV3<<<grid_size,block_size>>>(device_inp,device_out,N,C);
     cudaDeviceSynchronize();
 

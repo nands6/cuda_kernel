@@ -276,7 +276,7 @@ reduce_naive<<<grid, block>>>(d_a, d_b, n);
 __global__ void reduce_naive(const float* a, float* b, int n) {
     int tx = blockDim.x * blockIdx.x + threadIdx.x;
     if (tx < n){
-        atomicAdd(b, a[n]);
+        atomicAdd(b, a[tx]);
     } 
 }
 ~~~
@@ -775,18 +775,29 @@ __global__ void gpu_gemvV3(float *a,float *b,float *c,int m,int n){
 一个线程处理一个数据。
 
 ~~~c++
+//合并读取,按照input的行列m*n分配线程
 dim3 block(32,32);
 dim3 grid((n+block.x-1)/block.x,(m+block.y-1)/block.y);
+//合并写入,按照output的行列n*m分配线程
+dim3 block(32,32);
+dim3 grid((m+block.x-1)/block.x,(n+block.y-1)/block.y);
 gpu_transeposeV1<<<grid,block>>>(device_a,device_b,m,n);
 
 __global__ void gpu_transeposeV1(float *inp,float *out,int m,int n){
     
+    //合并读取
     int tx=blockDim.x*blockIdx.x+threadIdx.x;
     int ty=blockDim.y*blockIdx.y+threadIdx.y;
     if(tx<n&&ty<m){
-        // out[tx*m+ty]=inp[ty*n+tx];   //读取是合并访问的，但是写入不是
+        out[tx*m+ty]=inp[ty*n+tx];   //读取是合并访问的，但是写入不是
+    }
+
+    //合并写入
+    int tx=blockDim.x*blockIdx.x+threadIdx.x;
+    int ty=blockDim.y*blockIdx.y+threadIdx.y;
+    if(tx<m&&ty<n){
         out[ty*m+tx]=inp[tx*n+ty];   //写入是合并访问的，但是读取不是
-        // out[ty*m+tx]=__ldg(&inp[tx*n+ty]);  //与第二个一样，目前的架构一般不需要__ldg,因为能够自动判断并优化
+        // out[ty*m+tx]=__ldg(&inp[tx*n+ty]);  //与上面的一样，目前的架构一般不需要__ldg,因为能够自动判断并优化
     }
 }
 
@@ -978,6 +989,7 @@ __global__ void gpu_gemmV3(float *a,float *b,float *c,int m,int n,int k){
 ~~~
 
 ### FLOAT4向量化版本
+![Alt text](assets/image-11.png)
 
 ~~~c++
 dim3 block(8,32)

@@ -40,6 +40,8 @@ __global__ void gpu_gemvV1(float *a,float *b,float *c,int m,int n){
     
 }
 
+
+
 //一个线程处理多个数据
 __global__ void gpu_gemvV2(float *a,float *b,float *c,int m,int n){
     int tx=threadIdx.x;
@@ -65,20 +67,66 @@ __global__ void gpu_gemvV2(float *a,float *b,float *c,int m,int n){
 
 }
 
+
+
+
 //warp shuffle
+// __global__ void gpu_gemvV3(float *a,float *b,float *c,int m,int n){
+//     int tx=threadIdx.x;
+//     int warpnum=blockDim.x/32;
+//     int warpid=threadIdx.x/32;
+//     int laneid=threadIdx.x%32;
+//     extern __shared__ float shared[];
+//     float *begin_a=a+blockIdx.x*n;
+//     float sum=0;
+//     for(int i=tx;i<n;i=i+blockDim.x){
+//         sum=sum+begin_a[i]*b[i];
+//     }
+//     // shared[tx]=sum;
+//     __syncthreads();
+//     for(int i=16;i>0;i=i/2){
+//         sum=sum+__shfl_down_sync(0xffffffff,sum,i);
+//     }
+//     if(laneid==0){
+//         shared[warpid]=sum;
+//     }
+//     __syncthreads();
+//     //单个线程规约每个warp的值
+//     // float tmp=0;
+//     // if(threadIdx.x==0){
+//     //     for(int i=0;i<warpnum;i++){
+//     //         tmp=tmp+shared[i];
+//     //     }
+//     // }
+//     // __syncthreads();
+//     // if(threadIdx.x==0){
+//     //     c[blockIdx.x]=tmp;
+//     // }
+    
+//     //让第一个warp继续规约所有warp的值
+//     if(warpid==0){
+//         sum=shared[laneid];
+//         for(int i=warpnum/2;i>0;i=i/2){
+//             sum=sum+__shfl_down_sync(0xffffffff,sum,i);
+//         }
+//     }
+//     __syncthreads();
+//     if(threadIdx.x==0){
+//         c[blockIdx.x]=sum;
+//     }
+// }
+
 __global__ void gpu_gemvV3(float *a,float *b,float *c,int m,int n){
-    int tx=threadIdx.x;
+    float *begin_a=a+blockIdx.x*n;
     int warpnum=blockDim.x/32;
     int warpid=threadIdx.x/32;
     int laneid=threadIdx.x%32;
     extern __shared__ float shared[];
-    float *begin_a=a+blockIdx.x*n;
     float sum=0;
-    for(int i=tx;i<n;i=i+blockDim.x){
+    for(int i=threadIdx.x;i<n;i=i+blockDim.x){
         sum=sum+begin_a[i]*b[i];
     }
-    // shared[tx]=sum;
-    __syncthreads();
+   
     for(int i=16;i>0;i=i/2){
         sum=sum+__shfl_down_sync(0xffffffff,sum,i);
     }
@@ -86,30 +134,28 @@ __global__ void gpu_gemvV3(float *a,float *b,float *c,int m,int n){
         shared[warpid]=sum;
     }
     __syncthreads();
-    //单个线程规约每个warp的值
-    // float tmp=0;
-    // if(threadIdx.x==0){
-    //     for(int i=0;i<warpnum;i++){
-    //         tmp=tmp+shared[i];
-    //     }
-    // }
-    // __syncthreads();
-    // if(threadIdx.x==0){
-    //     c[blockIdx.x]=tmp;
-    // }
-    
-    //让第一个warp继续规约所有warp的值
+
     if(warpid==0){
-        sum=shared[laneid];
-        for(int i=warpnum/2;i>0;i=i/2){
+        if(laneid<warpnum){
+            sum=shared[laneid];
+        }else{
+            sum=0;
+        }
+        for(int i=16;i>0;i=i/2){
             sum=sum+__shfl_down_sync(0xffffffff,sum,i);
         }
+        shared[0]=sum;
     }
     __syncthreads();
+    sum=shared[0];
+
     if(threadIdx.x==0){
         c[blockIdx.x]=sum;
     }
+
 }
+
+
 int main(){
     int m=128;
     int n=12800;
@@ -133,6 +179,9 @@ int main(){
     cudaMemcpy(device_a,a,sizeof(float)*m*n,cudaMemcpyHostToDevice);
     cudaMemcpy(device_b,b,sizeof(float)*n,cudaMemcpyHostToDevice);
     cudaMemset(device_c,0,m*sizeof(float));
+    //V1版本
+    // int block_size=1;
+    // int grid_size=m;
 
     int block_size=256;
     int grid_size=m;

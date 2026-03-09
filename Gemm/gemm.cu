@@ -47,48 +47,81 @@ void InitMatrix(float *a,int m,int n){
 
 
 //naive版本 一个线程处理一个数据
-__global__ void gpu_gemmV1(float *a,float *b,float *c,int m,int n,int k){
-    int bx=blockDim.x*blockIdx.x;
-    int by=blockDim.y*blockIdx.y;
-    int tx=bx+threadIdx.x;
-    int ty=by+threadIdx.y;
+// __global__ void gpu_gemmV1(float *a,float *b,float *c,int m,int n,int k){
+//     int bx=blockDim.x*blockIdx.x;
+//     int by=blockDim.y*blockIdx.y;
+//     int tx=bx+threadIdx.x;
+//     int ty=by+threadIdx.y;
 
-    if(tx<n&&ty<m){
-        float sum=0;
-        for(int i=0;i<k;i++){
-            sum+=a[ty*k+i]*b[i*n+tx];
-        }
-        c[ty*n+tx]=sum;
-    }
+//     if(tx<n&&ty<m){
+//         float sum=0;
+//         for(int i=0;i<k;i++){
+//             sum+=a[ty*k+i]*b[i*n+tx];
+//         }
+//         c[ty*n+tx]=sum;
+//     }
 
-}
+// }
+
+
 
 //使用共享内存，滑动窗口的形式
+// template<int BM,int BN,int BK>
+// __global__ void gpu_gemmV2(float *a,float *b,float *c,int m,int n,int k){
+//     int bx=blockDim.x*blockIdx.x;
+//     int by=blockDim.y*blockIdx.y;
+//     int tx=bx+threadIdx.x;
+//     int ty=by+threadIdx.y;
+//     __shared__ float a_shared[BM][BK];
+//     __shared__ float b_shared[BK][BN];
+//     float *begin_c=c+by*n+bx;
+//     float *begin_a=a+by*k;
+//     float *begin_b=b+bx;
+//     float sum=0;
+//     if(tx<n&&ty<m){
+//         for(int s=0;s<k;s=s+BK){
+//             a_shared[threadIdx.y][threadIdx.x]=begin_a[threadIdx.y*k+s+threadIdx.x];  //a[ty*n+i+threadIdx.x]
+//             b_shared[threadIdx.y][threadIdx.x]=begin_b[s*n+threadIdx.y*n+threadIdx.x];
+//             __syncthreads();
+//             for(int i=0;i<BK;i++){
+//                 sum=sum+a_shared[threadIdx.y][i]*b_shared[i][threadIdx.x];
+//             }
+//             __syncthreads();
+//         }
+//         begin_c[threadIdx.y*n+threadIdx.x]=sum;
+//     }
+// }
+
 template<int BM,int BN,int BK>
 __global__ void gpu_gemmV2(float *a,float *b,float *c,int m,int n,int k){
     int bx=blockDim.x*blockIdx.x;
     int by=blockDim.y*blockIdx.y;
-    int tx=bx+threadIdx.x;
-    int ty=by+threadIdx.y;
+    int tx=threadIdx.x+bx;
+    int ty=threadIdx.y+by;
     __shared__ float a_shared[BM][BK];
     __shared__ float b_shared[BK][BN];
     float *begin_c=c+by*n+bx;
     float *begin_a=a+by*k;
     float *begin_b=b+bx;
-    float sum=0;
     if(tx<n&&ty<m){
+        float sum=0;
         for(int s=0;s<k;s=s+BK){
             a_shared[threadIdx.y][threadIdx.x]=begin_a[threadIdx.y*k+s+threadIdx.x];  //a[ty*n+i+threadIdx.x]
             b_shared[threadIdx.y][threadIdx.x]=begin_b[s*n+threadIdx.y*n+threadIdx.x];
+            
             __syncthreads();
             for(int i=0;i<BK;i++){
                 sum=sum+a_shared[threadIdx.y][i]*b_shared[i][threadIdx.x];
             }
             __syncthreads();
         }
-        begin_c[threadIdx.y*n+threadIdx.x]=sum;
+        c[ty*n+tx]=sum;
+
     }
+
 }
+
+
 
 //当前访存是瓶颈，增加每个线程的工作量
 template<int BM,int BN,int BK,int STRIDE>
@@ -132,58 +165,95 @@ __global__ void gpu_gemmV3(float *a,float *b,float *c,int m,int n,int k){
 
 }
 
+// #define FETCH_float4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
+// template <int M_NUM_PER_BLOCK,
+// int N_NUM_PER_BLOCK,
+// int K_NUM_PER_BLOCK,
+// int  NUM_PER_THREAD>
+// __global__ void gpu_gemmv4(float *A, float *B, float *C, int m, int n, int k)
+// {
+//     int tx=threadIdx.x;
+//     int ty=threadIdx.y;
+//     float *begin_A=A+blockIdx.y*k*M_NUM_PER_BLOCK;
+//     float *begin_B=B+blockIdx.x*N_NUM_PER_BLOCK;
+//     __shared__ float a_shared[M_NUM_PER_BLOCK][K_NUM_PER_BLOCK];
+//     __shared__ float b_shared[K_NUM_PER_BLOCK][N_NUM_PER_BLOCK];
+
+//     float temp[NUM_PER_THREAD]={0};
+    
+// #pragma unroll
+//     for(int s=0;s<k;s=s+K_NUM_PER_BLOCK){
+//         FETCH_float4(a_shared[ty][tx*NUM_PER_THREAD])= FETCH_float4(begin_A[ty*k+tx*NUM_PER_THREAD+s]);
+//         // a_shared[ty][tx*NUM_PER_THREAD]=begin_A[ty*k+tx*NUM_PER_THREAD+s];
+//         // a_shared[ty][tx*NUM_PER_THREAD+1]=begin_A[ty*k+tx*NUM_PER_THREAD+s+1];
+//         // a_shared[ty][tx*NUM_PER_THREAD+2]=begin_A[ty*k+tx*NUM_PER_THREAD+s+2];
+//         // a_shared[ty][tx*NUM_PER_THREAD+3]=begin_A[ty*k+tx*NUM_PER_THREAD+s+3];
+//         FETCH_float4(b_shared[ty][tx*NUM_PER_THREAD])= FETCH_float4(begin_B[ty*n+s*n+tx*NUM_PER_THREAD]);
+//         // b_shared[ty][tx*NUM_PER_THREAD]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD];
+//         // b_shared[ty][tx*NUM_PER_THREAD+1]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD+1];
+//         // b_shared[ty][tx*NUM_PER_THREAD+2]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD+2];
+//         // b_shared[ty][tx*NUM_PER_THREAD+3]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD+3];
+//         __syncthreads();
+//         #pragma unroll
+//         for(int i=0;i<NUM_PER_THREAD;i++){
+//             #pragma unroll
+//             for(int j=0;j<K_NUM_PER_BLOCK;j++){
+//                 temp[i]+=a_shared[ty][j]*b_shared[j][tx*NUM_PER_THREAD+i];
+//             }
+//         }
+//         __syncthreads();
+//     }
+
+//     float *begin_C=C+blockIdx.y*M_NUM_PER_BLOCK*n+blockIdx.x*N_NUM_PER_BLOCK;
+//     #pragma unroll
+//     for(int i=0;i<NUM_PER_THREAD;i++){
+//         begin_C[ty*n+tx*NUM_PER_THREAD+i]=temp[i];
+//     }
+
+
+// }
 #define FETCH_float4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
 template <int M_NUM_PER_BLOCK,
 int N_NUM_PER_BLOCK,
 int K_NUM_PER_BLOCK,
 int  NUM_PER_THREAD>
-__global__ void gpu_gemmv4(float *A, float *B, float *C, int m, int n, int k)
-{
+__global__ void gpu_gemmv4(float *A, float *B, float *C, int m, int n, int k){
     int tx=threadIdx.x;
     int ty=threadIdx.y;
-    float *begin_A=A+blockIdx.y*k*M_NUM_PER_BLOCK;
-    float *begin_B=B+blockIdx.x*N_NUM_PER_BLOCK;
+    float *begin_a=A+blockIdx.y*M_NUM_PER_BLOCK*k;
+    float *begin_b=B+N_NUM_PER_BLOCK*blockIdx.x;
     __shared__ float a_shared[M_NUM_PER_BLOCK][K_NUM_PER_BLOCK];
     __shared__ float b_shared[K_NUM_PER_BLOCK][N_NUM_PER_BLOCK];
-
-    float temp[NUM_PER_THREAD]={0};
-    
-#pragma unroll
+    float tmp[NUM_PER_THREAD]={0};
     for(int s=0;s<k;s=s+K_NUM_PER_BLOCK){
-        FETCH_float4(a_shared[ty][tx*NUM_PER_THREAD])= FETCH_float4(begin_A[ty*k+tx*NUM_PER_THREAD+s]);
-        // a_shared[ty][tx*NUM_PER_THREAD]=begin_A[ty*k+tx*NUM_PER_THREAD+s];
-        // a_shared[ty][tx*NUM_PER_THREAD+1]=begin_A[ty*k+tx*NUM_PER_THREAD+s+1];
-        // a_shared[ty][tx*NUM_PER_THREAD+2]=begin_A[ty*k+tx*NUM_PER_THREAD+s+2];
-        // a_shared[ty][tx*NUM_PER_THREAD+3]=begin_A[ty*k+tx*NUM_PER_THREAD+s+3];
-        FETCH_float4(b_shared[ty][tx*NUM_PER_THREAD])= FETCH_float4(begin_B[ty*n+s*n+tx*NUM_PER_THREAD]);
-        // b_shared[ty][tx*NUM_PER_THREAD]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD];
-        // b_shared[ty][tx*NUM_PER_THREAD+1]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD+1];
-        // b_shared[ty][tx*NUM_PER_THREAD+2]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD+2];
-        // b_shared[ty][tx*NUM_PER_THREAD+3]=begin_B[ty*n+s*n+tx*NUM_PER_THREAD+3];
+        FETCH_float4(a_shared[ty][tx*NUM_PER_THREAD])= FETCH_float4(begin_a[ty*k+tx*NUM_PER_THREAD+s]);
+        // a_shared[ty][tx*NUM_PER_THREAD]=begin_a[ty*k+s+tx*NUM_PER_THREAD];
+        // a_shared[ty][tx*NUM_PER_THREAD+1]=begin_a[ty*k+s+tx*NUM_PER_THREAD+1];
+        // a_shared[ty][tx*NUM_PER_THREAD+2]=begin_a[ty*k+s+tx*NUM_PER_THREAD+2];
+        // a_shared[ty][tx*NUM_PER_THREAD+3]=begin_a[ty*k+s+tx*NUM_PER_THREAD+3];
+        FETCH_float4(b_shared[ty][tx*NUM_PER_THREAD])= FETCH_float4(begin_b[ty*n+s*n+tx*NUM_PER_THREAD]);
+        // b_shared[ty][tx*NUM_PER_THREAD]=begin_b[ty*n+s*n+tx*NUM_PER_THREAD];
+        // b_shared[ty][tx*NUM_PER_THREAD+1]=begin_b[ty*n+s*n+tx*NUM_PER_THREAD+1];
+        // b_shared[ty][tx*NUM_PER_THREAD+2]=begin_b[ty*n+s*n+tx*NUM_PER_THREAD+2];
+        // b_shared[ty][tx*NUM_PER_THREAD+3]=begin_b[ty*n+s*n+tx*NUM_PER_THREAD+3];
         __syncthreads();
-        #pragma unroll
         for(int i=0;i<NUM_PER_THREAD;i++){
-            #pragma unroll
             for(int j=0;j<K_NUM_PER_BLOCK;j++){
-                temp[i]+=a_shared[ty][j]*b_shared[j][tx*NUM_PER_THREAD+i];
+                tmp[i]+=a_shared[ty][j]*b_shared[j][tx*NUM_PER_THREAD+i];
             }
         }
         __syncthreads();
     }
-
-    float *begin_C=C+blockIdx.y*M_NUM_PER_BLOCK*n+blockIdx.x*N_NUM_PER_BLOCK;
-    #pragma unroll
+    float *begin_c=C+blockIdx.y*M_NUM_PER_BLOCK*n+blockIdx.x*N_NUM_PER_BLOCK;
     for(int i=0;i<NUM_PER_THREAD;i++){
-        begin_C[ty*n+tx*NUM_PER_THREAD+i]=temp[i];
+        begin_c[ty*n+tx*NUM_PER_THREAD+i]=tmp[i];
     }
-
-
 }
 
 int main(){
-    int m=1024;
-    int n=1024;
-    int k=1024;
+    int m=512;
+    int n=512;
+    int k=512;
     float *h_a=(float*)malloc(sizeof(float)*m*k);
     float *h_b=(float*)malloc(sizeof(float)*k*n);
     float *h_c=(float*)malloc(sizeof(float)*m*n);
@@ -204,12 +274,15 @@ int main(){
     cudaMemcpy(device_b,h_b,k*n*sizeof(float),cudaMemcpyHostToDevice);
     cudaMemset(device_c,0,m*n*sizeof(float));
     
-    const int BM=16;
-    const int BN=16;
-    const int BK=16;
-    const int STRIDE=2;
-    dim3 block(16,16);
-    dim3 grid((n+block.x-1)/block.x/STRIDE,(m+block.y-1)/block.y/STRIDE);
+    // dim3 block(16,16);
+    // dim3 grid((n+block.x-1)/block.x,(m+block.y-1)/block.y);
+
+    // const int BM=16;
+    // const int BN=16;
+    // const int BK=16;
+    // const int STRIDE=2;
+    // dim3 block(16,16);
+    // dim3 grid((n+block.x-1)/block.x/STRIDE,(m+block.y-1)/block.y/STRIDE);
     
 
     struct timeval t1, t2;
@@ -220,14 +293,14 @@ int main(){
     //gpu_gemmV2<BM,BN,BK><<<grid,block>>>(device_a,device_b,device_c,m,n,k);
     //gpu_gemmV3<BM,BN,BK,STRIDE><<<grid,block>>>(device_a,device_b,device_c,m,n,k);
     
-    // constexpr int M_NUM_PER_BLOCK = 32;
-    // constexpr int N_NUM_PER_BLOCK = 32;
-    // constexpr int K_NUM_PER_BLOCK = 32;
-    // constexpr int NUM_PER_THREAD = 4;
-    // dim3 block(8, 32);
-    // dim3 grid(n / N_NUM_PER_BLOCK, m / M_NUM_PER_BLOCK);
-    // gpu_gemmv4<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK,K_NUM_PER_BLOCK,NUM_PER_THREAD>
-    // <<<grid, block>>>(device_a, device_b, device_c, m, n, k);
+    constexpr int M_NUM_PER_BLOCK = 32;
+    constexpr int N_NUM_PER_BLOCK = 32;
+    constexpr int K_NUM_PER_BLOCK = 32;
+    constexpr int NUM_PER_THREAD = 4;
+    dim3 block(8, 32);
+    dim3 grid(n / N_NUM_PER_BLOCK, m / M_NUM_PER_BLOCK);
+    gpu_gemmv4<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK,K_NUM_PER_BLOCK,NUM_PER_THREAD>
+    <<<grid, block>>>(device_a, device_b, device_c, m, n, k);
 
     cudaDeviceSynchronize();
 

@@ -21,6 +21,7 @@ bool check(float *a,float* b,int n){
 
 //naive版本  偶数线程执行
 __global__ void reduce_sumV1(float* input,float *output){
+
     int tx=threadIdx.x;
     extern __shared__ float shared[];
     float *begin_input=input+blockDim.x*blockIdx.x;
@@ -36,7 +37,6 @@ __global__ void reduce_sumV1(float* input,float *output){
     if(tx==0){
         output[blockIdx.x]=shared[tx];
     }
-
 }
 
 
@@ -59,6 +59,8 @@ __global__ void reduce_sumV2(float* input,float *output){
         output[blockIdx.x]=shared[tx];
         // atomicAdd(output,shared[0]);
     }
+
+
 
 }
 
@@ -106,7 +108,39 @@ __global__ void reduce_sumV3(float* input,float *output){
     }
 }
 
+// __global__ void reduce_sumV3(float* input,float *output){
+//     int tx=threadIdx.x+blockDim.x*blockIdx.x;
+//     int warpnum=blockDim.x/32;
+//     int warpid=threadIdx.x/32;
+//     int laneid=threadIdx.x%32;
+//     extern __shared__ float shared[];
 
+//     float sum=input[tx];
+//     for(int i=16;i>0;i=i/2){
+//         sum=sum+__shfl_down_sync(0xffffffff,sum,i);
+//     }
+//     if(laneid==0){
+//         shared[warpid]=sum;
+//     }
+//     __syncthreads();
+
+//     if(warpid==0){
+//         if(laneid<warpnum){
+//             sum=shared[laneid];
+//         }else{
+//             sum=0;
+//         }
+//         for(int i=16;i>0;i=i/2){
+//             sum=sum+__shfl_down_sync(0xffffffff,sum,i);
+//         }
+//     }
+
+//     if(threadIdx.x==0){
+//         output[blockIdx.x]=sum;
+//     }
+
+
+// }
 
 int main(){
 
@@ -138,7 +172,7 @@ int main(){
     double time_cuda_pre = 0;
    
     gettimeofday(&t1, NULL);
-    // reduce_sumV1<<<grid_size,block_size>>>(d_a,d_b);
+    //reduce_sumV1<<<grid_size,block_size>>>(d_a,d_b);
     // reduce_sumV2<<<grid_size,block_size>>>(d_a,d_b);
     reduce_sumV3<<<grid_size,block_size>>>(d_a,d_b);
     cudaDeviceSynchronize();
