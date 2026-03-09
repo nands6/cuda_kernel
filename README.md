@@ -26,7 +26,7 @@ Add,ReLU,Sigmod这些都是是访存密集型算子，计算强度低。即使�
 ## 1.1 Add
 
 向量加法
-![Alt text](image.png)
+![Alt text](assets/image.png)
 ### naive版本
 
 一个线程处理一个元素，对于长度为n的向量，需要n个线程
